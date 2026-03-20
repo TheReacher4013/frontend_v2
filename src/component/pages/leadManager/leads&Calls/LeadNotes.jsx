@@ -1,4 +1,6 @@
+
 import { useState, useRef, useEffect } from "react";
+import api from "../../../../services/api";
 import { FaChevronDown, FaTimes, FaCheckCircle } from "react-icons/fa";
 
 function CustomSelect({ value, onChange, options, placeholder }) {
@@ -64,9 +66,8 @@ function CustomSelect({ value, onChange, options, placeholder }) {
         <ul ref={menuRef} style={menuStyle} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-xl py-1 overflow-y-auto max-h-52">
           <li
             onClick={() => { onChange(""); setOpen(false); }}
-            className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${
-              value === "" ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
-            }`}
+            className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${value === "" ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
+              }`}
           >
             {placeholder}
             {value === "" && <FaCheckCircle size={11} className="text-blue-500" />}
@@ -75,9 +76,8 @@ function CustomSelect({ value, onChange, options, placeholder }) {
             <li
               key={opt.value}
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${
-                value === opt.value ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
-              }`}
+              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${value === opt.value ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
+                }`}
             >
               <span className="truncate pr-2">{opt.label}</span>
               {value === opt.value && <FaCheckCircle size={11} className="text-blue-500 flex-shrink-0" />}
@@ -135,11 +135,11 @@ function DatePicker({ value, onChange, placeholder }) {
     setOpen((prev) => !prev);
   };
 
-  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
 
   const handleDayClick = (day) => {
     const mm = String(viewMonth + 1).padStart(2, "0");
@@ -248,8 +248,8 @@ function DatePicker({ value, onChange, placeholder }) {
                     ${isSelected
                       ? "bg-blue-500 text-white shadow-sm"
                       : isToday
-                      ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-bold"
-                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                        ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-bold"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
                     }`}
                 >
                   {day}
@@ -277,38 +277,68 @@ function DatePicker({ value, onChange, placeholder }) {
 }
 
 export default function LeadNotes() {
-  const [activeTab, setActiveTab]     = useState("active");
+  const [activeTab, setActiveTab] = useState("active");
   const [currentPage, setCurrentPage] = useState(1);
-  const [campaign, setCampaign]       = useState("");
-  const [salesman, setSalesman]       = useState("");
-  const [startDate, setStartDate]     = useState("");
-  const [endDate, setEndDate]         = useState("");
+  const [campaign, setCampaign] = useState("");
+  const [salesman, setSalesman] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const recordsPerPage = 10;
 
-  const campaignOptions = [
-    { value: "Website Development Campaign", label: "Website Development Campaign" },
-    { value: "SEO Campaign",                 label: "SEO Campaign" },
-  ];
+  const [campaignOptions, setCampaignOptions] = useState([]);
+  const [salesmanOptions, setSalesmanOptions] = useState([]);
+  const [notesData, setNotesData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const salesmanOptions = [
-    { value: "Admin",      label: "Admin" },
-    { value: "Salesman 1", label: "Salesman 1" },
-    { value: "Salesman 2", label: "Salesman 2" },
-  ];
+  useEffect(() => { loadData(); }, []);
 
-  const notesData = Array.from({ length: 50 }, (_, i) => ({
-    ref:      "---",
-    campaign: "Website Development Campaign",
-    name:     `User ${i + 1}`,
-    email:    `user${i + 1}@gmail.com`,
-    note:     "Customer interested in website development services.",
-    type:     i % 2 === 0 ? "active" : "completed",
-  }));
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [campRes, usrRes, leadsRes] = await Promise.all([
+        api.getCampaigns(),
+        api.getUsers(),
+        api.getLeads({ limit: 200 }),
+      ]);
+      setCampaignOptions((campRes.campaigns || []).map(c => ({ value: c.name, label: c.name })));
+      setSalesmanOptions((usrRes.users || []).map(u => ({ value: u.name, label: u.name })));
 
-  const filteredNotes = notesData.filter((item) => item.type === activeTab);
-  const totalPages    = Math.ceil(filteredNotes.length / recordsPerPage);
-  const currentNotes  = filteredNotes.slice(
+      // Load notes for all leads
+      const leads = leadsRes.leads || [];
+      const allNotes = [];
+      for (const lead of leads) {
+        try {
+          const nRes = await api.getNotes(lead.id);
+          const notes = nRes.notes || nRes || [];
+          notes.forEach(n => {
+            allNotes.push({
+              id: n.id,
+              ref: `LEAD_${lead.id}`,
+              campaign: lead.requirement || "---",
+              name: lead.name,
+              email: lead.email || "---",
+              note: n.note,
+              type: "active",
+              date: n.created_at?.substring(0, 10) || "",
+            });
+          });
+        } catch { }
+      }
+      setNotesData(allNotes);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
+  const filteredNotes = notesData.filter((item) => {
+    const matchCampaign = !campaign || item.campaign === campaign;
+    const matchSalesman = !salesman || item.name === salesman;
+    const matchStart = !startDate || item.date >= startDate;
+    const matchEnd = !endDate || item.date <= endDate;
+    return matchCampaign && matchSalesman && matchStart && matchEnd;
+  });
+  const totalPages = Math.ceil(Math.max(1, filteredNotes.length) / recordsPerPage);
+  const currentNotes = filteredNotes.slice(
     (currentPage - 1) * recordsPerPage,
     currentPage * recordsPerPage
   );
@@ -323,17 +353,16 @@ export default function LeadNotes() {
         {/* TABS */}
         <div className="flex gap-4 md:gap-8 border-b dark:border-slate-700 mb-5 overflow-x-auto">
           {[
-            { key: "active",    label: "Active Campaign" },
+            { key: "active", label: "Active Campaign" },
             { key: "completed", label: "Completed Campaign" },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => { setActiveTab(tab.key); setCurrentPage(1); }}
-              className={`pb-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
-                activeTab === tab.key
+              className={`pb-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${activeTab === tab.key
                   ? "text-blue-600 border-blue-600"
                   : "text-gray-500 border-transparent hover:text-gray-700"
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -371,7 +400,7 @@ export default function LeadNotes() {
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700">
               <tr>
-                {["Reference Number","Campaign Name","Name","Email","Notes"].map((h) => (
+                {["Reference Number", "Campaign Name", "Name", "Email", "Notes"].map((h) => (
                   <th key={h} className="py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                     {h}
                   </th>
@@ -406,9 +435,9 @@ export default function LeadNotes() {
               <div className="divide-y divide-gray-50 dark:divide-slate-700">
                 {[
                   { label: "Campaign", value: note.campaign },
-                  { label: "Name",     value: note.name },
-                  { label: "Email",    value: note.email },
-                  { label: "Notes",    value: note.note },
+                  { label: "Name", value: note.name },
+                  { label: "Email", value: note.email },
+                  { label: "Notes", value: note.note },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between items-start px-4 py-2.5 gap-3">
                     <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide flex-shrink-0">{label}</span>
@@ -442,11 +471,10 @@ export default function LeadNotes() {
                 <button
                   key={i}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`px-3 py-1.5 rounded-lg border text-xs min-w-[32px] transition-colors ${
-                    currentPage === i + 1
+                  className={`px-3 py-1.5 rounded-lg border text-xs min-w-[32px] transition-colors ${currentPage === i + 1
                       ? "bg-blue-600 text-white border-blue-600"
                       : "border-gray-200 dark:border-slate-700 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700"
-                  }`}
+                    }`}
                 >
                   {i + 1}
                 </button>

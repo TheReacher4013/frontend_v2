@@ -34,18 +34,18 @@ function StaffMembers() {
     try {
       const data = await api.getUsers();
       const mapped = (data.users || []).map(u => ({
-        id:           u.id,
-        name:         u.name,
-        role:         u.role,
-        email:        u.email,
-        phone:        u.phone || "",
-        status:       u.is_active ? "Enabled" : "Disabled",
-        address:      u.address || "",
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        email: u.email,
+        phone: u.phone || "",
+        status: u.is_active ? "Enabled" : "Disabled",
+        address: u.address || "",
         profileImage: u.profile_image || "",
-        password:     ""
+        password: ""
       }));
       setStaffList(mapped);
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
   };
   const [formData, setFormData] = useState({
     profileImage: "", role: "", name: "", phone: "",
@@ -62,10 +62,10 @@ function StaffMembers() {
   const handleCreate = async () => {
     try {
       const payload = {
-        name:    formData.name,
-        email:   formData.email,
-        phone:   formData.phone,
-        role:    formData.role === "Admin" ? "admin" : "member",
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        role: formData.role === "Admin" ? "admin" : formData.role === "Manager" ? "manager" : "member",
         address: formData.address,
       };
       if (editId) {
@@ -76,7 +76,7 @@ function StaffMembers() {
       }
       await loadStaff();
       setEditId(null);
-    } catch(e) { alert("Error saving staff"); }
+    } catch (e) { alert("Error saving staff"); }
     setShowDrawer(false);
     setFormData({ profileImage: "", role: "", name: "", phone: "", password: "", email: "", status: "Enabled", address: "" });
   };
@@ -85,7 +85,7 @@ function StaffMembers() {
     try {
       await api.deleteUser(id);
       await loadStaff();
-    } catch(e) { alert("Error deleting staff"); }
+    } catch (e) { alert("Error deleting staff"); }
     setDeleteConfirm(null);
   };
 
@@ -172,8 +172,8 @@ function StaffMembers() {
             {/* Card Body */}
             <div className="divide-y divide-gray-50">
               {[
-                { label: "Email",   value: staff.email },
-                { label: "Phone",   value: staff.phone },
+                { label: "Email", value: staff.email },
+                { label: "Phone", value: staff.phone },
                 { label: "Address", value: staff.address },
               ].map(({ label, value }) => (
                 <div key={label} className="flex flex-col px-4 py-3">
@@ -377,6 +377,7 @@ function StaffMembers() {
                 >
                   <option value="">Select Role</option>
                   <option value="Admin">Admin</option>
+                  <option value="Manager">Manager</option>
                   <option value="Team Member">Team Member</option>
                 </select>
               </div>

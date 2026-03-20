@@ -1,4 +1,6 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import api from '../../../../services/api';
 import { useNavigate } from 'react-router-dom';
 import {
   FaPlay, FaBullhorn, FaCheckCircle, FaLayerGroup, FaRedo,
@@ -23,12 +25,7 @@ const LEAD_STATUSES = [
   "No Answer", "Follow Up", "Converted", "Closed",
 ];
 
-const CAMPAIGNS = [
-  "Make New Mobile Application",
-  "Website Development",
-  "Digital Marketing",
-  "SEO Services",
-];
+// CAMPAIGNS loaded from API
 
 // ── Custom Dropdown ──
 function CustomDropdown({ refObj, open, setOpen, value, setValue, options, placeholder, onPageReset }) {
@@ -59,9 +56,8 @@ function CustomDropdown({ refObj, open, setOpen, value, setValue, options, place
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-xl overflow-hidden">
           <div
             onClick={() => { setValue(""); setOpen(false); onPageReset?.(); }}
-            className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${
-              value === "" ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
-            }`}
+            className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${value === "" ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
+              }`}
           >
             All {value === "" && <FaCheckCircle size={11} className="text-blue-500" />}
           </div>
@@ -70,9 +66,8 @@ function CustomDropdown({ refObj, open, setOpen, value, setValue, options, place
               <div
                 key={opt}
                 onClick={() => { setValue(opt); setOpen(false); onPageReset?.(); }}
-                className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${
-                  value === opt ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
-                }`}
+                className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-between ${value === opt ? "bg-blue-50 dark:bg-slate-700 text-blue-600 font-semibold" : "text-gray-700 dark:text-gray-300"
+                  }`}
               >
                 <span className="truncate pr-2">{opt}</span>
                 {value === opt && <FaCheckCircle size={11} className="text-blue-500 flex-shrink-0" />}
@@ -163,29 +158,29 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
 
 // ── Main Component ──
 function Leads() {
-  const navigate   = useNavigate();
-  const isMobile   = useIsMobile();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
-  const [activeTab, setActiveTab]               = useState('active');
-  const [subTab, setSubTab]                     = useState('Started');
-  const [searchRef, setSearchRef]               = useState("");
-  const [selectedStatus, setSelectedStatus]     = useState("");
+  const [activeTab, setActiveTab] = useState('active');
+  const [subTab, setSubTab] = useState('Started');
+  const [searchRef, setSearchRef] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedCampaign, setSelectedCampaign] = useState("");
   const [viewAllCampaigns, setViewAllCampaigns] = useState(false);
-  const [currentPage, setCurrentPage]           = useState(1);
-  const [statusOpen, setStatusOpen]             = useState(false);
-  const [campaignOpen, setCampaignOpen]         = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [campaignOpen, setCampaignOpen] = useState(false);
 
   // Popup state
   const [popupLead, setPopupLead] = useState(null); // null = closed, object = open
 
-  const statusRef   = useRef(null);
+  const statusRef = useRef(null);
   const campaignRef = useRef(null);
   const recordsPerPage = 8;
 
   useEffect(() => {
     const handler = (e) => {
-      if (statusRef.current && !statusRef.current.contains(e.target))     setStatusOpen(false);
+      if (statusRef.current && !statusRef.current.contains(e.target)) setStatusOpen(false);
       if (campaignRef.current && !campaignRef.current.contains(e.target)) setCampaignOpen(false);
     };
     document.addEventListener("mousedown", handler);
@@ -196,29 +191,65 @@ function Leads() {
   const role = localStorage.getItem("role") || "admin";
   const redirectPath = `/${role}/sale-home-loan`;
 
-  const leadData = useMemo(() => {
-    const names = ["Tracey", "Novella", "Celia", "Akeem", "Cyrus", "Jacques", "Catalina", "John", "Rahul", "Priya"];
-    return Array.from({ length: 50 }).map((_, i) => ({
-      ref:        `MEP_${6464579 + i}`,
-      campaign:   CAMPAIGNS[i % CAMPAIGNS.length],
-      name:       names[i % names.length],
-      email:      `${names[i % names.length].toLowerCase()}${i}@example.com`,
-      status:     i % 2 === 0 ? "Started" : "Not Started",
-      leadStatus: LEAD_STATUSES[i % LEAD_STATUSES.length],
-    }));
-  }, []);
+  const [leadData, setLeadData] = useState([]);
+  const [CAMPAIGNS, setCAMPAIGNS] = useState([]);
+
+  useEffect(() => { loadLeads(); }, []);
+
+  const loadLeads = async () => {
+    try {
+      const [leadsRes, campRes] = await Promise.all([
+        api.getLeads({ limit: 500 }),
+        api.getCampaigns(),
+      ]);
+
+      const statusMap = {
+        new: "Not Started",
+        hot: "Started",
+        warm: "Started",
+        cold: "Not Started",
+        converted: "Started",
+        lost: "Not Started",
+        follow_up: "Started",
+      };
+
+      const leadStatusMap = {
+        new: "New",
+        hot: "Interested",
+        warm: "Call Back",
+        cold: "No Answer",
+        converted: "Converted",
+        lost: "Not Interested",
+        follow_up: "Follow Up",
+      };
+
+      setLeadData((leadsRes.leads || []).map(l => ({
+        id: l.id,
+        ref: `LEAD_${l.id}`,
+        campaign: l.requirement || "---",
+        name: l.name,
+        email: l.email || "---",
+        phone: l.phone || "---",
+        status: statusMap[l.status] || "Not Started",
+        leadStatus: leadStatusMap[l.status] || "New",
+        rawStatus: l.status,
+      })));
+
+      setCAMPAIGNS((campRes.campaigns || []).map(c => c.name));
+    } catch (e) { console.error("loadLeads error:", e); }
+  };
 
   const filteredData = useMemo(() => {
     return leadData.filter((item) => {
-      const matchSubTab   = item.status === subTab;
-      const matchRef      = searchRef.trim() === "" || item.ref.toLowerCase().includes(searchRef.trim().toLowerCase());
-      const matchStatus   = selectedStatus === "" || item.leadStatus === selectedStatus;
+      const matchSubTab = item.status === subTab;
+      const matchRef = searchRef.trim() === "" || item.ref.toLowerCase().includes(searchRef.trim().toLowerCase()) || item.name.toLowerCase().includes(searchRef.trim().toLowerCase());
+      const matchStatus = selectedStatus === "" || item.leadStatus === selectedStatus;
       const matchCampaign = selectedCampaign === "" || item.campaign === selectedCampaign;
       return matchSubTab && matchRef && matchStatus && matchCampaign;
     });
   }, [subTab, searchRef, selectedStatus, selectedCampaign, leadData]);
 
-  const totalPages     = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
   const currentRecords = filteredData.slice(
     (currentPage - 1) * recordsPerPage,
     currentPage * recordsPerPage
@@ -238,23 +269,40 @@ function Leads() {
   // On No — close popup
   const handleCancel = () => setPopupLead(null);
 
+  const [overview, setOverview] = useState({ total_leads: 0 });
+  const [callStats, setCallStats] = useState({ total_calls: 0, total_duration: "0H 0M" });
+  const [campCounts, setCampCounts] = useState({ active: 0, completed: 0 });
+
+  useEffect(() => {
+    Promise.all([api.getOverview(), api.getCallStats(), api.getCampaigns()])
+      .then(([ov, cs, cd]) => {
+        if (ov) setOverview(ov);
+        if (cs) setCallStats(cs);
+        if (cd?.campaigns) {
+          const active = cd.campaigns.filter(c => c.status === "active").length;
+          const completed = cd.campaigns.filter(c => c.status === "completed").length;
+          setCampCounts({ active, completed });
+        }
+      }).catch(console.error);
+  }, []);
+
   const statCards = [
-    { icon: <FaLayerGroup />,  value: "3",          label: "Active Campaign",    bg: "bg-indigo-50 dark:bg-indigo-900/20",  border: "border-indigo-100 dark:border-indigo-800",  iconBg: "bg-indigo-500",  textColor: "text-indigo-400" },
-    { icon: <FaChartLine />,   value: "4",          label: "Completed Campaign", bg: "bg-red-50 dark:bg-red-900/20",        border: "border-red-100 dark:border-red-800",        iconBg: "bg-red-400",     textColor: "text-red-400" },
-    { icon: <FaBullhorn />,    value: "123",        label: "Total Leads",        bg: "bg-orange-50 dark:bg-orange-900/20",  border: "border-orange-100 dark:border-orange-800",  iconBg: "bg-orange-500",  textColor: "text-orange-400" },
-    { icon: <FaPhoneAlt />,    value: "65",         label: "Call Made",          bg: "bg-green-50 dark:bg-green-900/20",    border: "border-green-100 dark:border-green-800",    iconBg: "bg-green-500",   textColor: "text-green-400" },
-    { icon: <FaClock />,       value: "4H 22M 30S", label: "Total Duration",     bg: "bg-teal-50 dark:bg-teal-900/20",      border: "border-teal-100 dark:border-teal-800",      iconBg: "bg-teal-500",    textColor: "text-teal-400" },
+    { icon: <FaLayerGroup />, value: campCounts.active, label: "Active Campaign", bg: "bg-indigo-50 dark:bg-indigo-900/20", border: "border-indigo-100 dark:border-indigo-800", iconBg: "bg-indigo-500", textColor: "text-indigo-400" },
+    { icon: <FaChartLine />, value: campCounts.completed, label: "Completed Campaign", bg: "bg-red-50 dark:bg-red-900/20", border: "border-red-100 dark:border-red-800", iconBg: "bg-red-400", textColor: "text-red-400" },
+    { icon: <FaBullhorn />, value: overview.total_leads || 0, label: "Total Leads", bg: "bg-orange-50 dark:bg-orange-900/20", border: "border-orange-100 dark:border-orange-800", iconBg: "bg-orange-500", textColor: "text-orange-400" },
+    { icon: <FaPhoneAlt />, value: callStats.total_calls || 0, label: "Call Made", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-100 dark:border-green-800", iconBg: "bg-green-500", textColor: "text-green-400" },
+    { icon: <FaClock />, value: callStats.total_duration || "0H 0M", label: "Total Duration", bg: "bg-teal-50 dark:bg-teal-900/20", border: "border-teal-100 dark:border-teal-800", iconBg: "bg-teal-500", textColor: "text-teal-400" },
   ];
 
   const leadStatusColors = {
-    "New":           "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
-    "Interested":    "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400",
-    "Not Interested":"bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400",
-    "Call Back":     "bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400",
-    "No Answer":     "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
-    "Follow Up":     "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400",
-    "Converted":     "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
-    "Closed":        "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+    "New": "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
+    "Interested": "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400",
+    "Not Interested": "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400",
+    "Call Back": "bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400",
+    "No Answer": "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+    "Follow Up": "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400",
+    "Converted": "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
+    "Closed": "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
   };
 
   return (
@@ -293,15 +341,14 @@ function Leads() {
         {/* MAIN TABS */}
         <div className="flex gap-4 md:gap-8 border-b dark:border-slate-700 mb-5 overflow-x-auto">
           {[
-            { key: 'active',    icon: <FaPlay className="text-[10px]" />,   label: 'Active Campaign' },
-            { key: 'completed', icon: <FaCheckCircle size={13} />,           label: 'Completed Campaign' },
+            { key: 'active', icon: <FaPlay className="text-[10px]" />, label: 'Active Campaign' },
+            { key: 'completed', icon: <FaCheckCircle size={13} />, label: 'Completed Campaign' },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
-                activeTab === tab.key ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}
+              className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 ${activeTab === tab.key ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-400 hover:text-gray-600'
+                }`}
             >
               {tab.icon} {tab.label}
             </button>
@@ -377,15 +424,14 @@ function Leads() {
             {/* SUB TABS */}
             <div className="flex gap-5 border-b dark:border-slate-700 mb-4 overflow-x-auto">
               {[
-                { key: 'Started',     icon: <FaLayerGroup size={11} />, label: 'Started' },
-                { key: 'Not Started', icon: <FaRedo size={10} />,       label: 'Not Started' },
+                { key: 'Started', icon: <FaLayerGroup size={11} />, label: 'Started' },
+                { key: 'Not Started', icon: <FaRedo size={10} />, label: 'Not Started' },
               ].map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => handleSubTab(tab.key)}
-                  className={`flex items-center gap-2 pb-2.5 border-b-2 font-bold text-xs whitespace-nowrap transition-colors flex-shrink-0 ${
-                    subTab === tab.key ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
+                  className={`flex items-center gap-2 pb-2.5 border-b-2 font-bold text-xs whitespace-nowrap transition-colors flex-shrink-0 ${subTab === tab.key ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
                 >
                   {tab.icon} {tab.label}
                 </button>
@@ -530,11 +576,10 @@ function Leads() {
                     <button
                       key={page}
                       onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border min-w-[32px] transition-colors ${
-                        currentPage === page
+                      className={`px-3 py-1.5 text-xs rounded-lg border min-w-[32px] transition-colors ${currentPage === page
                           ? 'bg-blue-500 text-white border-blue-500'
                           : 'border-gray-200 dark:border-slate-700 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700'
-                      }`}
+                        }`}
                     >
                       {page}
                     </button>

@@ -1,4 +1,7 @@
+
+
 import { useState, useRef, useEffect } from "react";
+import api from "../../../../services/api";
 
 export default function CallLogs() {
   const [activeTab, setActiveTab] = useState("completed");
@@ -11,18 +14,36 @@ export default function CallLogs() {
   const adminRef = useRef(null);
   const recordsPerPage = 10;
 
-  const campaignOptions = ["Test IT", "Campaign A", "Campaign B", "Campaign C"];
-  const adminOptions = ["Admin", "Manager", "Supervisor", "Agent"];
+  const [campaignOptions, setCampaignOptions] = useState([]);
+  const [adminOptions, setAdminOptions] = useState([]);
+  const [callLogs, setCallLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const callLogs = Array.from({ length: 50 }, (_, i) => ({
-    ref: "---",
-    campaign: "Test IT",
-    name: `User ${i + 1}`,
-    email: `user${i + 1}@gmail.com`,
-    duration: `${Math.floor(Math.random() * 5) + 1} M`,
-    calledOn: "02-03-2026 04:41 am",
-    type: i % 2 === 0 ? "completed" : "active",
-  }));
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [logsRes, campRes, usrRes] = await Promise.all([
+        api.getCallLogs(),
+        api.getCampaigns(),
+        api.getUsers(),
+      ]);
+      setCallLogs((logsRes.logs || []).map(l => ({
+        id: l.id,
+        ref: l.lead_id ? `LEAD_${l.lead_id}` : "---",
+        campaign: "---",
+        name: l.lead_name || "---",
+        email: "---",
+        duration: l.duration_sec ? `${Math.floor(l.duration_sec / 60)} M ${l.duration_sec % 60} S` : "0 M",
+        calledOn: l.called_at?.substring(0, 16)?.replace("T", " ") || "---",
+        type: "completed",
+      })));
+      setCampaignOptions((campRes.campaigns || []).map(c => c.name));
+      setAdminOptions((usrRes.users || []).map(u => u.name));
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -38,7 +59,11 @@ export default function CallLogs() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredLogs = callLogs.filter((item) => item.type === activeTab);
+  const filteredLogs = callLogs.filter((item) => {
+    const matchCampaign = selectedCampaign === "" || item.campaign === selectedCampaign;
+    const matchAdmin = selectedAdmin === "" || item.name === selectedAdmin;
+    return matchCampaign && matchAdmin;
+  });
   const totalPages = Math.ceil(filteredLogs.length / recordsPerPage);
   const indexOfLast = currentPage * recordsPerPage;
   const indexOfFirst = indexOfLast - recordsPerPage;
@@ -66,11 +91,10 @@ export default function CallLogs() {
         <ul className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-700 border dark:border-slate-600 rounded-lg shadow-lg z-50 overflow-hidden">
           <li
             onClick={() => { setSelected(""); setOpen(false); }}
-            className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-              selected === ""
+            className={`px-3 py-2 text-sm cursor-pointer transition-colors ${selected === ""
                 ? "bg-blue-600 text-white"
                 : "text-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
-            }`}
+              }`}
           >
             {placeholder}
           </li>
@@ -78,11 +102,10 @@ export default function CallLogs() {
             <li
               key={option}
               onClick={() => { setSelected(option); setOpen(false); }}
-              className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                selected === option
+              className={`px-3 py-2 text-sm cursor-pointer transition-colors ${selected === option
                   ? "bg-blue-600 text-white"
                   : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-600"
-              }`}
+                }`}
             >
               {option}
             </li>
@@ -106,11 +129,10 @@ export default function CallLogs() {
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
-              className={`pb-2 px-3 sm:px-6 whitespace-nowrap font-medium transition-colors ${
-                activeTab === tab
+              className={`pb-2 px-3 sm:px-6 whitespace-nowrap font-medium transition-colors ${activeTab === tab
                   ? "text-blue-600 border-b-2 border-blue-600"
                   : "text-gray-500 hover:text-gray-700"
-              }`}
+                }`}
             >
               {tab === "active" ? "Active Campaign" : "Completed Campaign"}
             </button>
@@ -237,11 +259,10 @@ export default function CallLogs() {
               <button
                 key={i}
                 onClick={() => setCurrentPage(i + 1)}
-                className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${
-                  currentPage === i + 1
+                className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${currentPage === i + 1
                     ? "bg-blue-600 text-white border-blue-600"
                     : "hover:bg-gray-50 dark:hover:bg-slate-700 dark:border-slate-600 dark:text-white"
-                }`}
+                  }`}
               >
                 {i + 1}
               </button>

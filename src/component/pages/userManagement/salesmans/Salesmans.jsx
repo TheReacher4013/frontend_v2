@@ -40,21 +40,24 @@ function Salesman() {
     const file = e.target.files[0];
     if (file) setFormData({ ...formData, profileImage: URL.createObjectURL(file) });
   };
-
-  const handleSubmit = () => {
-    if (editId) {
-      setSalesmanList(salesmanList.map((item) =>
-        item.id === editId
-          ? { ...item, ...formData, profileImage: formData.profileImage || getAvatarUrl(formData.name) }
-          : item
-      ));
+  const handleSubmit = async () => {
+    if (!formData.name) { alert("Name required"); return; }
+    try {
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        status: formData.status,
+      };
+      if (editId) {
+        await api.updateSalesman(editId, payload);
+      } else {
+        await api.createSalesman(payload);
+      }
+      await loadSalesmans();
       setEditId(null);
-    } else {
-      setSalesmanList([...salesmanList, {
-        id: Date.now(), ...formData,
-        profileImage: formData.profileImage || getAvatarUrl(formData.name),
-      }]);
-    }
+    } catch (e) { alert("Error saving salesman"); }
     setShowDrawer(false);
     setFormData({ profileImage: "", name: "", email: "", phone: "", status: "Enabled", address: "" });
   };

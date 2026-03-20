@@ -4,11 +4,11 @@ import api from "../../services/api";
 
 function Login() {
   const navigate = useNavigate();
-  const [role, setRole]         = useState(null);
-  const [email, setEmail]       = useState("");
+  const [role, setRole] = useState(null);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     setError("");
@@ -16,14 +16,36 @@ function Login() {
     setLoading(true);
     try {
       const data = await api.login(email, password);
-      if (!data.token) { setError(data.message || "Invalid credentials"); setLoading(false); return; }
+
+      if (!data.token) {
+        setError(data.message || "Invalid credentials");
+        setLoading(false);
+        return;
+      }
+
+      const userRole = data.user.role?.toLowerCase()?.trim();
+
+      // Check karo ki selected role aur actual role match karta hai
+      if (role && userRole !== role) {
+        setError(`This account has "${userRole}" role. Please select correct dashboard.`);
+        setLoading(false);
+        return;
+      }
+
+      // Save to localStorage
       localStorage.setItem("token", data.token);
-      localStorage.setItem("role",  data.user.role);
-      localStorage.setItem("user",  JSON.stringify(data.user));
-      if (data.user.role === "admin")   { navigate("/admin");   return; }
-      if (data.user.role === "manager") { navigate("/manager"); return; }
-      if (data.user.role === "member")  { navigate("/member");  return; }
-    } catch { setError("Server error. Please try again."); }
+      localStorage.setItem("role", userRole);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      // Navigate based on actual role from API
+      if (userRole === "admin") { navigate("/admin"); return; }
+      if (userRole === "manager") { navigate("/manager"); return; }
+      if (userRole === "member") { navigate("/member"); return; }
+
+      setError("Unknown role. Contact admin.");
+    } catch (err) {
+      setError("Server error. Please try again.");
+    }
     setLoading(false);
   };
 
@@ -33,9 +55,9 @@ function Login() {
         {!role && (
           <>
             <h2 className="text-2xl font-bold mb-6">Select Dashboard</h2>
-            <button onClick={() => setRole("admin")}   className="w-full bg-blue-500 text-white py-2 rounded mb-4">Admin Dashboard</button>
+            <button onClick={() => setRole("admin")} className="w-full bg-blue-500 text-white py-2 rounded mb-4">Admin Dashboard</button>
             <button onClick={() => setRole("manager")} className="w-full bg-green-500 text-white py-2 rounded mb-4">Manager Dashboard</button>
-            <button onClick={() => setRole("member")}  className="w-full bg-purple-500 text-white py-2 rounded">Member Dashboard</button>
+            <button onClick={() => setRole("member")} className="w-full bg-purple-500 text-white py-2 rounded">Member Dashboard</button>
           </>
         )}
         {role && (
