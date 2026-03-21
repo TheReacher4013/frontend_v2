@@ -1,35 +1,41 @@
-import { useState, useRef, useEffect } from "react";
-import { FaPlus, FaTimes, FaChevronDown, FaSearch } from "react-icons/fa";
-import { Edit, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { FaPlus, FaTimes, FaChevronDown, FaSearch, FaSpinner, FaExclamationTriangle, FaInbox } from "react-icons/fa";
+import { Edit, Trash2, RefreshCw } from "lucide-react";
+import api from "../../../services/api";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const FILTER_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "fields", label: "Form Fields" },
   { value: "status", label: "Status" },
 ];
 
-const initialForms = [
-  {
-    id: 1,
-    name: "Insurance Enquiry Form",
-    fields: ["Name", "Mobile", "Alternative Number", "Email", "Salary", "Gender", "DOB", "Married", "Type of Insurance", "Notes"],
-    status: "active",
-  },
-  {
-    id: 2,
-    name: "Lead Contact Form",
-    fields: ["First Name", "Last Name", "Company Name", "Email", "Contact No", "City", "Message"],
-    status: "active",
-  },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const Spinner = ({ size = 16 }) => (
+  <FaSpinner size={size} className="animate-spin text-blue-500" />
+);
 
-function ToggleSwitch({ checked, onChange }) {
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
+  const bg = type === "error" ? "bg-red-600" : "bg-emerald-600";
   return (
-    <button
-      onClick={onChange}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${checked ? "bg-blue-500" : "bg-slate-300"}`}
-    >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-300 ${checked ? "translate-x-6" : "translate-x-1"}`} />
+    <div className={`fixed bottom-6 right-6 z-[400] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-white text-sm font-semibold ${bg}`}
+      style={{ animation: "slideUp .3s ease both" }}>
+      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <span>{message}</span>
+      <button onClick={onClose}><FaTimes size={10} /></button>
+    </div>
+  );
+};
+
+function ToggleSwitch({ checked, onChange, loading }) {
+  return (
+    <button onClick={onChange} disabled={loading}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${loading ? "opacity-50 cursor-not-allowed" : ""} ${checked ? "bg-blue-500" : "bg-slate-300"}`}>
+      {loading
+        ? <span className="absolute inset-0 flex items-center justify-center"><FaSpinner size={11} className="text-white animate-spin" /></span>
+        : <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-300 ${checked ? "translate-x-6" : "translate-x-1"}`} />
+      }
     </button>
   );
 }
@@ -53,13 +59,16 @@ function FieldRow({ field, index, onChange, onRemove }) {
   );
 }
 
-function FormDrawer({ onClose, onSave, editData }) {
-  const [name, setName]           = useState(editData?.name   || "");
-  const [status, setStatus]       = useState(editData?.status || "active");
-  const [fields, setFields]       = useState(editData?.fields || []);
+// ─── Form Drawer ──────────────────────────────────────────────────────────────
+function FormDrawer({ onClose, onSave, editData, saving }) {
+  const [name, setName] = useState(editData?.name || "");
+  const [status, setStatus] = useState(editData?.status || "active");
+  const [fields, setFields] = useState(
+    editData?.fields?.map(f => typeof f === "object" ? f.label : f) || []
+  );
   const [nameError, setNameError] = useState("");
 
-  const handleAddField    = () => setFields([...fields, ""]);
+  const handleAddField = () => setFields([...fields, ""]);
   const handleChangeField = (index, value) => {
     const updated = [...fields];
     updated[index] = value;
@@ -70,9 +79,8 @@ function FormDrawer({ onClose, onSave, editData }) {
   const handleSave = () => {
     if (!name.trim()) { setNameError("Name is required"); return; }
     setNameError("");
-    const cleanFields = fields.filter((f) => f.trim() !== "");
+    const cleanFields = fields.filter(f => f.trim() !== "").map(label => ({ label }));
     onSave({ name: name.trim(), status, fields: cleanFields });
-    onClose();
   };
 
   return (
@@ -83,6 +91,7 @@ function FormDrawer({ onClose, onSave, editData }) {
           <h2 className="text-base font-semibold text-gray-800">{editData ? "Edit Form" : "Add New Form"}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition p-1 rounded"><FaTimes size={16} /></button>
         </div>
+
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1"><span className="text-red-500">* </span>Name</label>
@@ -94,13 +103,19 @@ function FormDrawer({ onClose, onSave, editData }) {
             />
             {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
             <div className="flex rounded-lg overflow-hidden border border-gray-300 w-fit">
-              <button onClick={() => setStatus("active")} className={`px-5 py-2 text-sm font-semibold transition ${status === "active" ? "bg-blue-500 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>Active</button>
-              <button onClick={() => setStatus("inactive")} className={`px-5 py-2 text-sm font-semibold border-l border-gray-300 transition ${status === "inactive" ? "bg-blue-500 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>Inactive</button>
+              {["active", "inactive"].map(s => (
+                <button key={s} onClick={() => setStatus(s)}
+                  className={`px-5 py-2 text-sm font-semibold transition capitalize ${status === s ? "bg-blue-500 text-white" : "bg-white text-gray-500 hover:bg-gray-50"} ${s === "inactive" ? "border-l border-gray-300" : ""}`}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Form Fields</label>
             {fields.length > 0 && (
@@ -110,16 +125,24 @@ function FormDrawer({ onClose, onSave, editData }) {
                 ))}
               </div>
             )}
-            <button onClick={handleAddField} className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg py-2.5 text-sm font-medium transition">
+            <button onClick={handleAddField}
+              className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg py-2.5 text-sm font-medium transition">
               <FaPlus size={11} /> Add Form Field
             </button>
           </div>
         </div>
+
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-white flex-shrink-0">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
-          <button onClick={handleSave} className="px-6 py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold transition flex items-center gap-2 shadow-sm">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            {editData ? "Update" : "Create"}
+          <button onClick={onClose} disabled={saving}
+            className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-6 py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold transition flex items-center gap-2 shadow-sm disabled:opacity-60">
+            {saving
+              ? <><Spinner size={13} /> Saving…</>
+              : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>{editData ? "Update" : "Create"}</>
+            }
           </button>
         </div>
       </div>
@@ -127,260 +150,359 @@ function FormDrawer({ onClose, onSave, editData }) {
   );
 }
 
-function Forms() {
-  const [forms, setForms]                   = useState(initialForms);
-  const [drawerOpen, setDrawerOpen]         = useState(false);
-  const [editData, setEditData]             = useState(null);
-  const [editId, setEditId]                 = useState(null);
-  const [selected, setSelected]             = useState([]);
-  const [searchText, setSearchText]         = useState("");
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function Forms() {
+  const [forms, setForms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [toggling, setToggling] = useState(null);
+  const [error, setError] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editData, setEditData] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [searchText, setSearchText] = useState("");
   const [selectedFilter, setSelectedFilter] = useState(null);
-  const [dropdownOpen, setDropdownOpen]     = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const dropdownRef = useRef(null);
+  const showToast = (message, type = "success") => setToast({ message, type });
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+  // ── Fetch ────────────────────────────────────────────────────────────────
+  const fetchForms = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await api.getForms();
+      setForms(Array.isArray(res) ? res : (res?.forms ?? res?.data ?? []));
+    } catch (e) {
+      setError(e.message || "Failed to load forms");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const openAdd  = () => { setEditData(null); setEditId(null); setDrawerOpen(true); };
+  useEffect(() => { fetchForms(); }, [fetchForms]);
+
+  useEffect(() => {
+    const h = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // ── Save (Create / Update) ────────────────────────────────────────────────
+  const handleSave = async (data) => {
+    setSaving(true);
+    try {
+      if (editId !== null) {
+        const res = await api.updateForm(editId, data);
+        const updated = res?.form || res?.data || { id: editId, ...data };
+        setForms(prev => prev.map(f => f.id === editId ? { ...f, ...updated } : f));
+        showToast("Form updated successfully");
+      } else {
+        const res = await api.createForm(data);
+        const created = res?.form || res?.data || { id: Date.now(), ...data };
+        setForms(prev => [created, ...prev]);
+        showToast("Form created successfully");
+      }
+      setDrawerOpen(false);
+    } catch (e) {
+      showToast(e.message || "Save failed", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(deleteTarget.id);
+    try {
+      await api.deleteForm(deleteTarget.id);
+      setForms(prev => prev.filter(f => f.id !== deleteTarget.id));
+      setSelected(prev => prev.filter(x => x !== deleteTarget.id));
+      showToast(`"${deleteTarget.name}" deleted`);
+    } catch (e) {
+      showToast(e.message || "Delete failed", "error");
+    } finally {
+      setDeleting(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  // ── Toggle Status ─────────────────────────────────────────────────────────
+  const handleToggleStatus = async (f) => {
+    const newStatus = f.status === "active" ? "inactive" : "active";
+    setToggling(f.id);
+    setForms(prev => prev.map(x => x.id === f.id ? { ...x, status: newStatus } : x));
+    try {
+      await api.updateForm(f.id, { ...f, status: newStatus });
+    } catch (e) {
+      setForms(prev => prev.map(x => x.id === f.id ? { ...x, status: f.status } : x));
+      showToast(e.message || "Update failed", "error");
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const getFieldLabels = (f) => {
+    if (!Array.isArray(f.fields)) return [];
+    return f.fields.map(x => typeof x === "object" ? x.label : x);
+  };
+
+  const openAdd = () => { setEditData(null); setEditId(null); setDrawerOpen(true); };
   const openEdit = (f) => { setEditData({ ...f }); setEditId(f.id); setDrawerOpen(true); };
 
-  const handleSave = (data) => {
-    if (editId !== null) setForms(forms.map((f) => (f.id === editId ? { ...f, ...data } : f)));
-    else setForms([...forms, { id: Date.now(), ...data }]);
-  };
-
-  const handleDelete = (id) => {
-    if (window.confirm("Delete this form?")) setForms(forms.filter((f) => f.id !== id));
-  };
-
-  const handleToggleStatus = (id) =>
-    setForms(forms.map((f) => f.id === id ? { ...f, status: f.status === "active" ? "inactive" : "active" } : f));
-
-  const filtered = forms.filter((f) => {
+  // ── Filter ────────────────────────────────────────────────────────────────
+  const filtered = forms.filter(f => {
     if (!searchText.trim()) return true;
     const q = searchText.toLowerCase();
-    if (!selectedFilter) {
-      return (
-        f.name.toLowerCase().includes(q) ||
-        f.fields.some((field) => field.toLowerCase().includes(q)) ||
-        f.status.toLowerCase().includes(q)
-      );
-    }
-    if (selectedFilter === "name")   return f.name.toLowerCase().includes(q);
-    if (selectedFilter === "fields") return f.fields.some((field) => field.toLowerCase().includes(q));
-    if (selectedFilter === "status") return f.status.toLowerCase().includes(q);
+    const labels = getFieldLabels(f);
+    if (!selectedFilter) return f.name?.toLowerCase().includes(q) || labels.some(l => l.toLowerCase().includes(q)) || f.status?.toLowerCase().includes(q);
+    if (selectedFilter === "name") return f.name?.toLowerCase().includes(q);
+    if (selectedFilter === "fields") return labels.some(l => l.toLowerCase().includes(q));
+    if (selectedFilter === "status") return f.status?.toLowerCase().includes(q);
     return true;
   });
 
-  const allSelected   = filtered.length > 0 && selected.length === filtered.length;
-  const selectedLabel = selectedFilter
-    ? FILTER_OPTIONS.find((o) => o.value === selectedFilter)?.label
-    : "Select...";
+  const allSelected = filtered.length > 0 && filtered.every(f => selected.includes(f.id));
+  const selectedLabel = selectedFilter ? FILTER_OPTIONS.find(o => o.value === selectedFilter)?.label : "Select...";
 
   return (
     <div className="p-4 md:p-6 min-h-screen bg-gray-50">
 
-      <p className="text-xs text-gray-400 mb-1">Dashboard &nbsp;-&nbsp; Forms</p>
-      <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-5">Forms</h1>
+      {/* Header */}
+      <p className="text-xs text-gray-400 mb-1">Dashboard &nbsp;—&nbsp; Forms</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-800">Forms</h1>
+        <button onClick={fetchForms} disabled={loading}
+          className="self-start sm:self-auto p-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition shadow-sm" title="Refresh">
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
 
+      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-
-        <button
-          onClick={openAdd}
-          className="flex items-center justify-center sm:justify-start gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition shadow-sm w-full sm:w-auto"
-        >
+        <button onClick={openAdd}
+          className="flex items-center justify-center sm:justify-start gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition shadow-sm w-full sm:w-auto">
           <FaPlus size={12} /> Add New Form
         </button>
 
         <div className="flex items-stretch border border-gray-300 rounded-lg bg-white shadow-sm overflow-visible w-full sm:w-auto">
-
           <div className="relative flex-shrink-0" ref={dropdownRef}>
-            <button
-              onClick={() => setDropdownOpen((v) => !v)}
-              className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 border-r border-gray-200 transition w-[130px] justify-between rounded-l-lg h-full"
-            >
+            <button onClick={() => setDropdownOpen(v => !v)}
+              className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 border-r border-gray-200 transition w-[130px] justify-between rounded-l-lg h-full">
               <span className="truncate flex-1 text-left text-sm">{selectedLabel}</span>
               <FaChevronDown size={10} className={`transition-transform flex-shrink-0 ${dropdownOpen ? "rotate-180" : ""}`} />
             </button>
-
             {dropdownOpen && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-[160px]">
                 {selectedFilter && (
-                  <button
-                    onClick={() => { setSelectedFilter(null); setDropdownOpen(false); }}
-                    className="w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-red-50 flex items-center gap-2 border-b border-gray-100"
-                  >
+                  <button onClick={() => { setSelectedFilter(null); setDropdownOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-red-50 flex items-center gap-2 border-b border-gray-100">
                     <FaTimes size={10} /> Clear Filter
                   </button>
                 )}
-                {FILTER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { setSelectedFilter(opt.value); setDropdownOpen(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 transition ${selectedFilter === opt.value ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
-                  >
+                {FILTER_OPTIONS.map(opt => (
+                  <button key={opt.value} onClick={() => { setSelectedFilter(opt.value); setDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 transition ${selectedFilter === opt.value ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}>
                     {opt.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
-
           <div className="flex items-center px-3 py-2 gap-2 flex-1 min-w-0">
-            <input
-              className="outline-none text-sm text-gray-700 w-full bg-transparent placeholder-gray-400 min-w-0"
-              placeholder={
-                selectedFilter
-                  ? `Search by ${FILTER_OPTIONS.find(o => o.value === selectedFilter)?.label}...`
-                  : "Search..."
-              }
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-            />
-            {searchText ? (
-              <button onClick={() => setSearchText("")} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-                <FaTimes size={11} />
-              </button>
-            ) : (
-              <FaSearch size={12} className="text-gray-400 flex-shrink-0" />
-            )}
+            <input className="outline-none text-sm text-gray-700 w-full bg-transparent placeholder-gray-400 min-w-0"
+              placeholder={selectedFilter ? `Search by ${FILTER_OPTIONS.find(o => o.value === selectedFilter)?.label}...` : "Search..."}
+              value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            {searchText
+              ? <button onClick={() => setSearchText("")} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><FaTimes size={11} /></button>
+              : <FaSearch size={12} className="text-gray-400 flex-shrink-0" />
+            }
           </div>
         </div>
       </div>
 
-      {/* Mobile Cards */}
-      <div className="flex flex-col gap-3 md:hidden">
-        {filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm bg-white rounded-xl border border-gray-200">No forms found.</div>
-        ) : (
-          filtered.map((f) => (
-            <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-gray-800 text-sm flex-1 min-w-0 pr-2">{f.name}</h3>
-                <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${f.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                  {f.status === "active" ? "Active" : "Inactive"}
-                </span>
-              </div>
-              <div className="mb-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Form Fields</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {f.fields.map((field, i) => (
-                    <span key={i} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full border border-blue-100">{field}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Status:</span>
-                  <ToggleSwitch checked={f.status === "active"} onChange={() => handleToggleStatus(f.id)} />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => openEdit(f)}
-                    className="w-9 h-9 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors shadow-sm"
-                  >
-                    <Edit size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(f.id)}
-                    className="w-9 h-9 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Desktop Table */}
-      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="w-10 px-4 py-3 text-center">
-                <input type="checkbox" checked={allSelected} onChange={(e) => setSelected(e.target.checked ? filtered.map((f) => f.id) : [])} className="cursor-pointer accent-blue-500" />
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-56">Name</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Form Fields</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">No forms found.</td></tr>
-            ) : (
-              filtered.map((f) => (
-                <tr key={f.id} className="hover:bg-blue-50/30 transition align-top">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" checked={selected.includes(f.id)} onChange={() => setSelected((prev) => prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id])} className="cursor-pointer accent-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-gray-700 align-top">{f.name}</td>
-                  <td className="px-4 py-4 align-top">
-                    <ul className="space-y-0.5">
-                      {f.fields.map((field, i) => (
-                        <li key={i} className="flex items-center gap-1.5 text-gray-500 text-sm">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
-                          {field}
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <ToggleSwitch checked={f.status === "active"} onChange={() => handleToggleStatus(f.id)} />
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    {/* ✅ Updated: Products-style w-9 h-9 desktop buttons */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openEdit(f)}
-                        className="w-9 h-9 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors shadow-sm"
-                      >
-                        <Edit size={15} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(f.id)}
-                        className="w-9 h-9 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex flex-wrap justify-between items-center mt-4 px-1 gap-2">
-        <span className="text-xs text-gray-400">Total: {filtered.length} forms</span>
-        <div className="flex items-center gap-1">
-          <button className="w-7 h-7 flex items-center justify-center border border-gray-300 rounded bg-white text-gray-500 text-xs hover:bg-gray-50 transition">‹</button>
-          <span className="w-7 h-7 flex items-center justify-center bg-blue-500 text-white rounded text-xs font-semibold">1</span>
-          <button className="w-7 h-7 flex items-center justify-center border border-gray-300 rounded bg-white text-gray-500 text-xs hover:bg-gray-50 transition">›</button>
-          <span className="ml-2 text-xs text-gray-400">10 / page</span>
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+          <FaExclamationTriangle size={13} />
+          <span>{error}</span>
+          <button onClick={fetchForms} className="ml-auto text-xs font-semibold underline hover:no-underline">Retry</button>
         </div>
-      </div>
+      )}
 
+      {/* Loading */}
+      {loading ? (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center py-20 gap-3 text-gray-400">
+          <Spinner size={20} /><span className="text-sm">Loading forms…</span>
+        </div>
+      ) : (
+        <>
+          {/* Mobile Cards */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-12 text-gray-400 bg-white rounded-xl border border-gray-200">
+                <FaInbox size={28} className="text-gray-200" />
+                <p className="text-sm font-medium">No forms found</p>
+              </div>
+            ) : filtered.map(f => (
+              <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="font-semibold text-gray-800 text-sm flex-1 min-w-0 pr-2">{f.name}</h3>
+                  <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${f.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    {f.status === "active" ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Form Fields</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {getFieldLabels(f).map((label, i) => (
+                      <span key={i} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full border border-blue-100">{label}</span>
+                    ))}
+                    {getFieldLabels(f).length === 0 && <span className="text-xs text-gray-400">No fields</span>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Status:</span>
+                    <ToggleSwitch checked={f.status === "active"} loading={toggling === f.id} onChange={() => handleToggleStatus(f)} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(f)} className="w-9 h-9 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition shadow-sm">
+                      <Edit size={15} />
+                    </button>
+                    <button onClick={() => setDeleteTarget(f)} className="w-9 h-9 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition shadow-sm">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="w-10 px-4 py-3 text-center">
+                    <input type="checkbox" checked={allSelected}
+                      onChange={e => setSelected(e.target.checked ? filtered.map(f => f.id) : [])}
+                      className="cursor-pointer accent-blue-500" />
+                  </th>
+                  {["Name", "Form Fields", "Status", "Action"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-16">
+                      <div className="flex flex-col items-center gap-2 text-gray-400">
+                        <FaInbox size={28} className="text-gray-200" />
+                        <p className="text-sm font-medium">No forms found</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filtered.map(f => (
+                  <tr key={f.id} className="hover:bg-blue-50/30 transition align-top group">
+                    <td className="px-4 py-4 text-center">
+                      <input type="checkbox" checked={selected.includes(f.id)}
+                        onChange={() => setSelected(prev => prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id])}
+                        className="cursor-pointer accent-blue-500" />
+                    </td>
+                    <td className="px-4 py-4 font-medium text-gray-700 align-top w-56">{f.name}</td>
+                    <td className="px-4 py-4 align-top">
+                      {getFieldLabels(f).length === 0 ? (
+                        <span className="text-xs text-gray-400">No fields</span>
+                      ) : (
+                        <ul className="space-y-0.5">
+                          {getFieldLabels(f).map((label, i) => (
+                            <li key={i} className="flex items-center gap-1.5 text-gray-500 text-sm">
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
+                              {label}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 align-top w-28">
+                      <ToggleSwitch checked={f.status === "active"} loading={toggling === f.id} onChange={() => handleToggleStatus(f)} />
+                    </td>
+                    <td className="px-4 py-4 align-top w-28">
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(f)} className="w-9 h-9 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition shadow-sm" title="Edit">
+                          <Edit size={15} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(f)} className="w-9 h-9 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition shadow-sm" title="Delete">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="flex flex-wrap justify-between items-center mt-4 px-1 gap-2">
+            <span className="text-xs text-gray-400">
+              {selected.length > 0 ? `${selected.length} selected · ` : ""}
+              Total: {filtered.length} form{filtered.length !== 1 ? "s" : ""}
+            </span>
+            <button className="w-7 h-7 flex items-center justify-center bg-blue-500 text-white rounded text-xs font-semibold">1</button>
+          </div>
+        </>
+      )}
+
+      {/* Delete Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FaExclamationTriangle className="text-red-500 text-xl" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">Delete Form?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              This will permanently delete{" "}
+              <span className="font-bold text-gray-700">"{deleteTarget.name}"</span>.
+              This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={!!deleting}
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={!!deleting}
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold shadow-md transition flex items-center justify-center gap-2">
+                {deleting ? <><Spinner size={13} /> Deleting…</> : "Yes, Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drawer */}
       {drawerOpen && (
         <FormDrawer
           key={editId ?? "new"}
           onClose={() => setDrawerOpen(false)}
           onSave={handleSave}
           editData={editData}
+          saving={saving}
         />
       )}
+
+      {/* Toast */}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
-
-export default Forms;
