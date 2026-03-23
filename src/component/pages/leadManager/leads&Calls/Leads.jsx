@@ -1,11 +1,10 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import api from '../../../../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   FaPlay, FaBullhorn, FaCheckCircle, FaLayerGroup, FaRedo,
   FaChevronDown, FaChevronLeft, FaChevronRight, FaPhoneAlt,
-  FaClock, FaChartLine, FaSearch, FaTimes, FaExclamationTriangle
+  FaClock, FaChartLine, FaSearch, FaTimes,
 } from 'react-icons/fa';
 
 function useIsMobile() {
@@ -24,8 +23,6 @@ const LEAD_STATUSES = [
   "New", "Interested", "Not Interested", "Call Back",
   "No Answer", "Follow Up", "Converted", "Closed",
 ];
-
-// CAMPAIGNS loaded from API
 
 // ── Custom Dropdown ──
 function CustomDropdown({ refObj, open, setOpen, value, setValue, options, placeholder, onPageReset }) {
@@ -82,11 +79,7 @@ function CustomDropdown({ refObj, open, setOpen, value, setValue, options, place
 
 // ── Confirmation Popup ──
 function ConfirmPopup({ lead, onConfirm, onCancel }) {
-  // Close on backdrop click
-  const handleBackdrop = (e) => {
-    if (e.target === e.currentTarget) onCancel();
-  };
-
+  const handleBackdrop = (e) => { if (e.target === e.currentTarget) onCancel(); };
   return (
     <div
       onClick={handleBackdrop}
@@ -97,7 +90,6 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
         className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm mx-auto overflow-hidden"
         style={{ animation: "popupIn 0.18s ease" }}
       >
-        {/* Header */}
         <div className="bg-blue-500 px-5 py-4 flex items-center gap-3">
           <div className="bg-white/20 p-2 rounded-full flex-shrink-0">
             <FaPlay size={12} className="text-white" />
@@ -106,15 +98,10 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
             <h3 className="text-white font-semibold text-sm">Start Call</h3>
             <p className="text-blue-100 text-xs mt-0.5">Lead confirmation required</p>
           </div>
-          <button
-            onClick={onCancel}
-            className="ml-auto text-white/70 hover:text-white transition-colors"
-          >
+          <button onClick={onCancel} className="ml-auto text-white/70 hover:text-white transition-colors">
             <FaTimes size={13} />
           </button>
         </div>
-
-        {/* Body */}
         <div className="px-5 py-5">
           <p className="text-gray-700 dark:text-gray-200 text-sm leading-relaxed text-center">
             Are you sure you want to start a call for
@@ -128,8 +115,6 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
             You will be redirected to the campaign page.
           </p>
         </div>
-
-        {/* Buttons */}
         <div className="px-5 pb-5 flex gap-3">
           <button
             onClick={onCancel}
@@ -145,7 +130,6 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
           </button>
         </div>
       </div>
-
       <style>{`
         @keyframes popupIn {
           from { opacity: 0; transform: scale(0.92) translateY(12px); }
@@ -159,7 +143,18 @@ function ConfirmPopup({ lead, onConfirm, onCancel }) {
 // ── Main Component ──
 function Leads() {
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
+
+  // ── Universal role detection ──
+  // Reads the first URL segment: /admin/... → "admin", /member/... → "member", etc.
+  const role = (() => {
+    const segments = location.pathname.split("/").filter(Boolean);
+    if (segments.length > 0) return segments[0];
+    return localStorage.getItem("role") || "admin";
+  })();
+
+  const redirectPath = `/${role}/sale-home-loan`;
 
   const [activeTab, setActiveTab] = useState('active');
   const [subTab, setSubTab] = useState('Started');
@@ -170,9 +165,7 @@ function Leads() {
   const [currentPage, setCurrentPage] = useState(1);
   const [statusOpen, setStatusOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
-
-  // Popup state
-  const [popupLead, setPopupLead] = useState(null); // null = closed, object = open
+  const [popupLead, setPopupLead] = useState(null);
 
   const statusRef = useRef(null);
   const campaignRef = useRef(null);
@@ -187,10 +180,6 @@ function Leads() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Get role from localStorage for role-based redirect
-  const role = localStorage.getItem("role") || "admin";
-  const redirectPath = `/${role}/sale-home-loan`;
-
   const [leadData, setLeadData] = useState([]);
   const [CAMPAIGNS, setCAMPAIGNS] = useState([]);
 
@@ -204,23 +193,12 @@ function Leads() {
       ]);
 
       const statusMap = {
-        new: "Not Started",
-        hot: "Started",
-        warm: "Started",
-        cold: "Not Started",
-        converted: "Started",
-        lost: "Not Started",
-        follow_up: "Started",
+        new: "Not Started", hot: "Started", warm: "Started",
+        cold: "Not Started", converted: "Started", lost: "Not Started", follow_up: "Started",
       };
-
       const leadStatusMap = {
-        new: "New",
-        hot: "Interested",
-        warm: "Call Back",
-        cold: "No Answer",
-        converted: "Converted",
-        lost: "Not Interested",
-        follow_up: "Follow Up",
+        new: "New", hot: "Interested", warm: "Call Back", cold: "No Answer",
+        converted: "Converted", lost: "Not Interested", follow_up: "Follow Up",
       };
 
       setLeadData((leadsRes.leads || []).map(l => ({
@@ -242,7 +220,9 @@ function Leads() {
   const filteredData = useMemo(() => {
     return leadData.filter((item) => {
       const matchSubTab = item.status === subTab;
-      const matchRef = searchRef.trim() === "" || item.ref.toLowerCase().includes(searchRef.trim().toLowerCase()) || item.name.toLowerCase().includes(searchRef.trim().toLowerCase());
+      const matchRef = searchRef.trim() === "" ||
+        item.ref.toLowerCase().includes(searchRef.trim().toLowerCase()) ||
+        item.name.toLowerCase().includes(searchRef.trim().toLowerCase());
       const matchStatus = selectedStatus === "" || item.leadStatus === selectedStatus;
       const matchCampaign = selectedCampaign === "" || item.campaign === selectedCampaign;
       return matchSubTab && matchRef && matchStatus && matchCampaign;
@@ -256,17 +236,11 @@ function Leads() {
   );
 
   const handleSubTab = (tab) => { setSubTab(tab); setCurrentPage(1); };
-
-  // Open popup
   const handleActionClick = (item) => setPopupLead(item);
-
-  // On Yes — navigate to campaign page
   const handleConfirm = () => {
     setPopupLead(null);
     navigate(redirectPath, { state: { lead: popupLead } });
   };
-
-  // On No — close popup
   const handleCancel = () => setPopupLead(null);
 
   const [overview, setOverview] = useState({ total_leads: 0 });
@@ -308,16 +282,10 @@ function Leads() {
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-[#f8f9fa] dark:bg-slate-900 min-h-screen w-full overflow-x-hidden">
 
-      {/* ── Confirmation Popup ── */}
       {popupLead && (
-        <ConfirmPopup
-          lead={popupLead}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-        />
+        <ConfirmPopup lead={popupLead} onConfirm={handleConfirm} onCancel={handleCancel} />
       )}
 
-      {/* PAGE HEADER */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Leads</h1>
@@ -405,7 +373,6 @@ function Leads() {
           {/* RIGHT CONTENT */}
           <div className={`col-span-12 ${!isMobile ? 'lg:col-span-9' : ''} min-w-0`}>
 
-            {/* MOBILE CAMPAIGN DROPDOWN */}
             {isMobile && (
               <div className="mb-4">
                 <CustomDropdown
@@ -450,7 +417,10 @@ function Leads() {
                   className="w-full pl-8 pr-8 py-2.5 border border-gray-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-white outline-none focus:border-blue-400 transition-colors"
                 />
                 {searchRef && (
-                  <button onClick={() => { setSearchRef(""); setCurrentPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-400 transition-colors">
+                  <button
+                    onClick={() => { setSearchRef(""); setCurrentPage(1); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-400 transition-colors"
+                  >
                     <FaTimes size={10} />
                   </button>
                 )}
@@ -469,7 +439,7 @@ function Leads() {
               </div>
             </div>
 
-            {/* ── MOBILE CARDS ── */}
+            {/* MOBILE CARDS */}
             {isMobile ? (
               <div className="flex flex-col gap-3">
                 {currentRecords.length === 0 ? (
@@ -478,7 +448,6 @@ function Leads() {
                   </div>
                 ) : currentRecords.map((item, i) => (
                   <div key={i} className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-                    {/* Card Header */}
                     <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700">
                       <span className="text-blue-500 font-bold text-sm">{item.ref}</span>
                       <button
@@ -488,20 +457,17 @@ function Leads() {
                         <FaPlay size={10} />
                       </button>
                     </div>
-                    {/* Card Body */}
                     <div className="divide-y divide-gray-50 dark:divide-slate-700">
-                      <div className="flex justify-between items-center px-4 py-2.5">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Campaign</span>
-                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-right max-w-[55%] leading-snug">{item.campaign}</span>
-                      </div>
-                      <div className="flex justify-between items-center px-4 py-2.5">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Name</span>
-                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{item.name}</span>
-                      </div>
-                      <div className="flex justify-between items-center px-4 py-2.5">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Email</span>
-                        <span className="text-xs text-gray-400 truncate max-w-[55%]">{item.email}</span>
-                      </div>
+                      {[
+                        { label: "Campaign", value: item.campaign },
+                        { label: "Name", value: item.name },
+                        { label: "Email", value: item.email },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex justify-between items-center px-4 py-2.5">
+                          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{label}</span>
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-right max-w-[55%] leading-snug">{value}</span>
+                        </div>
+                      ))}
                       <div className="flex justify-between items-center px-4 py-2.5">
                         <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Status</span>
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${leadStatusColors[item.leadStatus] || "bg-blue-50 text-blue-600"}`}>
@@ -513,17 +479,16 @@ function Leads() {
                 ))}
               </div>
             ) : (
-              /* ── DESKTOP TABLE ── */
+              /* DESKTOP TABLE */
               <div className="overflow-x-auto border border-gray-100 dark:border-slate-700 rounded-xl">
                 <table className="w-full text-left text-[13px] border-collapse min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-slate-900/50 text-gray-500 dark:text-gray-400">
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide">Reference Number</th>
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide">Campaign Name</th>
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide">Name</th>
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide">Email</th>
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide">Lead Status</th>
-                      <th className="px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide text-center">Action</th>
+                      {["Reference Number", "Campaign Name", "Name", "Email", "Lead Status", "Action"].map(h => (
+                        <th key={h} className={`px-4 py-3 font-semibold border-b dark:border-slate-700 text-xs uppercase tracking-wide ${h === "Action" ? "text-center" : ""}`}>
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-slate-700 text-gray-700 dark:text-gray-300">
@@ -533,7 +498,7 @@ function Leads() {
                       </tr>
                     ) : currentRecords.map((item, i) => (
                       <tr key={i} className="hover:bg-gray-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                        <td className="px-4 py-3.5 text-blue-500 font-medium cursor-pointer">{item.ref}</td>
+                        <td className="px-4 py-3.5 text-blue-500 font-medium">{item.ref}</td>
                         <td className="px-4 py-3.5 text-sm">{item.campaign}</td>
                         <td className="px-4 py-3.5 font-medium text-sm">{item.name}</td>
                         <td className="px-4 py-3.5 text-gray-400 text-sm">{item.email}</td>
@@ -570,21 +535,18 @@ function Leads() {
                 >
                   <FaChevronLeft size={10} />
                 </button>
-                {[...Array(Math.min(totalPages, 5))].map((_, i) => {
-                  const page = i + 1;
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border min-w-[32px] transition-colors ${currentPage === page
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'border-gray-200 dark:border-slate-700 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700'
-                        }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                })}
+                {[...Array(Math.min(totalPages, 5))].map((_, i) => (
+                  <button
+                    key={i + 1}
+                    onClick={() => setCurrentPage(i + 1)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border min-w-[32px] transition-colors ${currentPage === i + 1
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'border-gray-200 dark:border-slate-700 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700'
+                      }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
                 {totalPages > 5 && <span className="text-gray-400 text-xs px-1">...</span>}
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
